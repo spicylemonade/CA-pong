@@ -1,0 +1,240 @@
+:root {
+  --bg: #fdfdfc;
+  --fg: #222;
+  --fg-muted: #555;
+  --accent: #3a6ea5;
+  --accent-2: #b0443a;
+  --rule: #e6e6e4;
+  --code-bg: #f5f3ee;
+  --content-width: 760px;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: "Source Serif Pro", "Iowan Old Style", Georgia, "Times New Roman", serif;
+  font-size: 17px;
+  line-height: 1.58;
+  -webkit-font-smoothing: antialiased;
+}
+
+main {
+  max-width: var(--content-width);
+  margin: 0 auto;
+  padding: 48px 28px 80px;
+}
+
+header {
+  border-bottom: 1px solid var(--rule);
+  margin-bottom: 28px;
+  padding-bottom: 16px;
+}
+
+h1, h2, h3 {
+  font-family: "Inter", "Helvetica Neue", Arial, sans-serif;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+  color: var(--fg);
+}
+
+h1 {
+  font-size: 2.0rem;
+  margin: 0 0 8px;
+}
+
+h2 {
+  font-size: 1.35rem;
+  margin-top: 2.2em;
+  margin-bottom: 0.5em;
+  padding-top: 0.2em;
+}
+
+h3 {
+  font-size: 1.1rem;
+  margin-top: 1.6em;
+  margin-bottom: 0.4em;
+}
+
+.meta {
+  color: var(--fg-muted);
+  font-size: 0.92rem;
+  font-family: "Inter", "Helvetica Neue", Arial, sans-serif;
+}
+
+p {
+  margin: 0.9em 0;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+}
+a:hover { color: var(--accent-2); }
+
+code {
+  font-family: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+  background: var(--code-bg);
+  padding: 2px 5px;
+  border-radius: 3px;
+  font-size: 0.88em;
+}
+
+pre {
+  background: var(--code-bg);
+  border: 1px solid var(--rule);
+  border-radius: 5px;
+  padding: 14px 16px;
+  overflow-x: auto;
+  font-size: 0.85rem;
+  line-height: 1.45;
+}
+pre code {
+  background: transparent;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  margin: 1.2em 0;
+  padding: 0.2em 1.0em;
+  border-left: 3px solid var(--accent);
+  color: var(--fg-muted);
+  font-style: italic;
+  background: #f8f6f1;
+}
+
+figure {
+  margin: 1.8em 0;
+  text-align: center;
+}
+figure img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 4px;
+  border: 1px solid var(--rule);
+  background: #000;
+}
+figure.plot img {
+  background: white;
+}
+figcaption {
+  font-family: "Inter", "Helvetica Neue", Arial, sans-serif;
+  font-size: 0.82rem;
+  color: var(--fg-muted);
+  margin-top: 8px;
+  text-align: left;
+}
+figcaption .lead {
+  font-weight: 600;
+  color: var(--fg);
+  margin-right: 4px;
+}
+
+.gif-row {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+@media (min-width: 720px) {
+  .gif-row.two { grid-template-columns: 1fr 1fr; }
+}
+
+.note {
+  background: #fbf8ef;
+  border: 1px solid #ecdfb8;
+  border-radius: 5px;
+  padding: 14px 18px;
+  font-size: 0.94rem;
+}
+.note .lead {
+  font-family: "Inter", "Helvetica Neue", Arial, sans-serif;
+  font-weight: 600;
+  margin-right: 6px;
+}
+
+.math {
+  font-family: "Cambria Math", "Latin Modern Math", "Source Serif Pro", serif;
+}
+
+.callout-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 10px;
+  margin: 1.2em 0;
+}
+.callout {
+  border: 1px solid var(--rule);
+  border-radius: 5px;
+  padding: 12px 14px;
+  background: #fdfdfc;
+}
+.callout .k {
+  font-family: "Inter", "Helvetica Neue", Arial, sans-serif;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--fg-muted);
+}
+.callout .v {
+  font-family: "Inter", "Helvetica Neue", Arial, sans-serif;
+  font-size: 1.15rem;
+  font-weight: 600;
+  margin-top: 4px;
+}
+
+footer {
+  margin-top: 60px;
+  padding-top: 20px;
+  border-top: 1px solid var(--rule);
+  font-family: "Inter", "Helvetica Neue", Arial, sans-serif;
+  font-size: 0.85rem;
+  color: var(--fg-muted);
+}
+
+table {
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92rem;
+  width: 100%;
+}
+th, td {
+  border-bottom: 1px solid var(--rule);
+  padding: 8px 12px;
+  text-align: left;
+  font-family: "Inter", "Helvetica Neue", Arial, sans-serif;
+}
+th {
+  background: #f5f3ee;
+  font-weight: 600;
+}
+td.num { font-variant-numeric: tabular-nums; text-align: right; }
+
+ul.refs {
+  list-style: disc;
+  padding-left: 1.4em;
+  margin: 0.6em 0 1.2em;
+  font-size: 0.95rem;
+}
+ul.refs li {
+  margin: 0.45em 0;
+  color: var(--fg);
+}
+
+.rule-box {
+  font-family: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.88rem;
+  background: var(--code-bg);
+  border: 1px solid var(--rule);
+  border-radius: 5px;
+  padding: 12px 16px;
+  margin: 1.2em 0;
+  white-space: pre;
+  overflow-x: auto;
+}

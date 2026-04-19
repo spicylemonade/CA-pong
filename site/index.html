@@ -1,0 +1,539 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>A cellular-automaton DishBrain: Pong from local rules alone</title>
+  <meta name="description"
+        content="A continuous cellular automaton with per-cell thresholds solves Kagan et al.'s closed-loop DishBrain-Pong at 41% hit rate with +0.48 ball-paddle tracking correlation. A local Hebbian rule gives +1.5pp on a benign substrate but breaks catastrophically under barrier lesion. No neural network, no backprop." />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<main>
+
+<header>
+  <h1>A cellular-automaton DishBrain: Pong from local rules alone</h1>
+  <p class="meta">
+    Continuous 2&#8209;D CA &middot; per&#8209;cell thresholds &middot; Hebbian feedback plasticity &middot; no NN, no backprop
+  </p>
+</header>
+
+<p>
+  In 2022, Kagan et al. showed that a flat dish of cortical neurons, stimulated
+  and read out through a multi&#8209;electrode array, learned to play Pong in
+  about five minutes. The work was striking not because of the <em>performance</em> (a few bounces above chance) but because of the <em>substrate</em>:
+  no gradient descent, no labels, just live neurons adjusting their own synapses
+  in response to structured electrical feedback. Later write&#8209;ups gave it the
+  name it deserves: a "DishBrain."
+</p>
+
+<p>
+  This post asks a narrower question. Can a <em>non&#8209;neural</em> substrate
+  do the same thing? Specifically, can a continuous cellular automaton (the <a href="https://chakazul.github.io/lenia.html">Lenia</a> family, cells
+  carrying only scalar activation and scalar rule parameters) be wired
+  into a closed&#8209;loop Pong environment the way DishBrain is? And can
+  <em>local</em> plasticity (no backprop, no network, each cell updating from
+  signals in its own neighbourhood) be made to run inside it without blowing
+  the dish up?
+</p>
+
+<p>
+  Short answer. Yes. A 64&times;64 cellular automaton with scalar per&#8209;cell
+  parameters, a small Gaussian coupling kernel, and a leaky rectified
+  integrator plays Pong at a <strong>41.0% &plusmn; 1.7% hit rate</strong>
+  (8 seeds), with <strong>+0.48 ball&#8209;paddle tracking correlation</strong>.
+  In this simulator the relaunch geometry makes a width&#8209;only null
+  misleading: the paddle spans 28% of the x&#8209;range, but a frozen centred
+  paddle scores ~0% while the best fixed paddle sits near ~33%. The CA still
+  beats that stationary&#8209;paddle baseline without any learning, without
+  any neural network, and without a single scalar gradient ever being
+  propagated through it. A local Hebbian rule
+  keyed to DishBrain&#8209;style feedback stimulation, bolted on top, lifts
+  this to <strong>42.5% &plusmn; 1.9%</strong> (+1.5&nbsp;pp, +0.03 tracking)
+  under benign conditions, and continues to help under small local
+  tissue ablation, reaching <strong>43.6% &plusmn; 1.0%</strong>. But the
+  same rule <em>catastrophically breaks the dish</em> when a thicker barrier
+  lesion severs the sensor&#8209;to&#8209;motor path, dropping performance
+  to <strong>34.9%</strong> and tracking correlation to
+  <strong>+0.05</strong>. That failure mode is the most interesting thing in
+  the post. The write&#8209;up below lays out what was built, what was
+  measured across eight seeds per condition, and the four earlier plasticity
+  variants I tried and failed with before landing on the one here.
+</p>
+
+<figure class="plot">
+  <img src="figures/fig_architecture.png" alt="Architecture diagram showing a 2D dish with a sensory strip at the top, motor readout at the bottom, and a ball/paddle overlay." />
+  <figcaption>
+    <span class="lead">Fig&nbsp;1.</span>
+    Closed&#8209;loop setup. An <span style="color:#3a6ea5">H&times;W</span>
+    toroidal CA grid. A Gaussian bump at a top&#8209;row column encodes the
+    ball&rsquo;s x&#8209;position (<span style="color:#2a86a4">cyan</span>).
+    Bottom&#8209;row activity is integrated over left and right halves; the
+    difference drives the paddle (<span style="color:#b03030">red</span>).
+    On a hit, a coherent bump is delivered onto the motor strip;
+    on a miss, random noise. All learning is local and driven by that stim.
+  </figcaption>
+</figure>
+
+<figure class="video">
+  <video controls preload="metadata" playsinline
+         poster="figures/fig_architecture.png"
+         style="width:100%; border-radius:4px; background:#000; border:1px solid var(--rule);">
+    <source src="video/dishbrain_explainer.mp4" type="video/mp4" />
+    Your browser doesn't support embedded video.
+  </video>
+  <figcaption>
+    <span class="lead">Video.</span>
+    A 90&#8209;second walk&#8209;through of the architecture, update rule,
+    closed&#8209;loop Pong, Hebbian plasticity, and the two&#8209;regimes
+    result. Made with <a href="https://www.manim.community/">Manim</a>.
+  </figcaption>
+</figure>
+
+<h2>The substrate</h2>
+
+<p>
+  A single channel of activation <code>A[y, x] &isin; [0, 1]</code> on a
+  64&times;64 toroidal grid. Each cell has two scalar parameters,
+  <code>mu[y, x]</code> (excitability threshold) and
+  <code>sigma[y, x]</code> (threshold width). The update is a leaky
+  reaction&#8209;diffusion integrator:
+</p>
+
+<div class="rule-box">u(y, x)   = (A * K)(y, x)           # Gaussian kernel on the torus
+G(y, x)   = max(0, tanh((u - mu) / sigma))
+A_new     = (1 - leak) * A + dt * S_sensory
+                              + dt * beta * G
+                              + dt * baseline_drive * noise
+          clipped to [0, 1]</div>
+
+<p>
+  The kernel <code>K</code> is a small isotropic Gaussian (radius 7, sum&nbsp;=&nbsp;1).
+  The growth function is a rectified sigmoid: zero below threshold, saturating
+  at&nbsp;1. Paired with the <code>leak</code> term this gives a
+  <em>monostable</em> substrate: resting state is silent, stim drives
+  local activity, nothing can run away to saturation. Mexican&#8209;hat and
+  bistable variants I tried either collapsed to all&#8209;ones (runaway fronts)
+  or produced an inverted sensor&#8209;motor map; the monostable leaky version
+  was the first that consistently routed top&#8209;row stim to bottom&#8209;row
+  activity in the right direction.
+</p>
+
+<h2>The task</h2>
+
+<p>
+  Pong, DishBrain&#8209;style:
+</p>
+<ul>
+  <li><strong>Sensory input</strong> (top 4 rows): a Gaussian bump at the column
+    <code>ball_x &sdot; W</code>, re&#8209;applied every CA tick so the dish
+    sees continuous input rather than a single impulse.</li>
+  <li><strong>Motor readout</strong> (bottom 4 rows): mean activity on the right
+    half minus mean activity on the left half, passed through
+    <code>tanh(gain &sdot; .)</code> with a very slow baseline subtraction
+    (<span class="math">&tau;</span> ~ 10k steps) to suppress static DC asymmetries.</li>
+  <li><strong>Feedback stim</strong> (motor strip / bottom 4 rows): <em>on hit</em>, a
+    coherent Gaussian bump at <code>ball_x</code> mirroring the sensory
+    input (the "predictable" outcome). <em>On miss</em>, uniform random
+    noise (the "unpredictable" outcome). This is the Kagan et&nbsp;al. signal.</li>
+</ul>
+
+<p>
+  Ball dynamics: ~32 env steps per flight; paddle width covers
+  <span class="math">~28%</span> of the x&#8209;range, but misses relaunch from a
+  central x&#8209;band with a fixed slope, so the true stationary&#8209;paddle
+  baselines are geometry&#8209;dependent. In this simulator a frozen centred
+  paddle scores ~0%, while the best fixed paddle near an edge reaches ~33%.
+  That's the more relevant null to beat.
+</p>
+
+<h2>Intrinsic performance: no learning, no NN, still Pong</h2>
+
+<figure class="gif-row">
+  <img src="gifs/gif_intrinsic.gif" alt="GIF of the CA playing Pong without learning: a ball bounces around while paddle tracks it." />
+  <figcaption>
+    <span class="lead">Fig&nbsp;2.</span>
+    500&#8209;step run of the substrate alone, no plasticity. Left: activation
+    (magma), ball as white dot, paddle as green bar. Right: the
+    <code>mu</code> field, flat because nothing is learning. Hits flash
+    green, misses red.
+  </figcaption>
+</figure>
+
+<p>
+  On the default parameters (<code>mu0 = 0.12, sigma0 = 0.08, leak = 0.2</code>),
+  the substrate alone achieves <strong>41.0% &plusmn; 1.7% hit rate</strong>
+  and ball&#8209;paddle correlation <strong>+0.48</strong> across 8 seeds of
+  10&#8209;k env steps each. The mechanism is geometric: a Gaussian kernel
+  propagates a stim bump at top&#8209;column <em>X</em> down and outward,
+  producing bottom&#8209;row activity that's peaked near column <em>X</em>.
+  The right&minus;left readout then biases the paddle toward the ball's
+  column. No learning required; the symmetry of the kernel does the work.
+</p>
+
+<figure class="plot">
+  <img src="figures/fig_learning_curves.png" alt="Learning curve plot" />
+  <figcaption>
+    <span class="lead">Fig&nbsp;3.</span>
+    Rolling hit rate over training (window 800 env steps), mean &plusmn; SEM
+    across seeds. Dotted grey is the best stationary&#8209;paddle baseline
+    estimated from the same Pong reset geometry.
+  </figcaption>
+</figure>
+
+<p>
+  The headline result is already visible in the <span style="color:#4a9bd8">blue
+  intrinsic</span> curve: it sits well above the stationary&#8209;paddle
+  baseline from step one, and stays flat across training. That's a cellular automaton
+  with scalar per&#8209;cell
+  parameters and no learning playing Pong purely through the geometry of a
+  small Gaussian.
+</p>
+
+<h2>Plasticity: a local Hebbian rule keyed to the feedback stim</h2>
+
+<p>
+  The learning rule is deliberately simple and purely local. Each cell keeps
+  a slow EMA <code>a_baseline[y, x]</code> of its own activation. The update
+  at a reward event uses the <em>product</em> of the cell's current
+  activation and the feedback stim delivered at its location:
+</p>
+
+<div class="rule-box">on hit:  mu[y, x] -= eta_hit  * A[y, x] * F[y, x]
+on miss: mu[y, x] += eta_miss * A[y, x] * F[y, x]
+                                                    # homeostatic recenter:
+mu += (mu0 - mu.mean())                             # preserve avg excitability</div>
+
+<p>
+  The Hebbian product <code>A &sdot; F</code> is large at cells that fired
+  <em>where the feedback expected them to fire</em>. On a hit the feedback is a
+  coherent bump at the ball's position, so those cells are exactly the ones
+  that routed the signal correctly; lowering their <code>mu</code>
+  strengthens that routing. On a miss the feedback is noise, so
+  <code>A &sdot; F</code> has no consistent spatial structure; the weak
+  positive&#8209;eta suppression provides a gentle "unlearning" pressure
+  that averages to near zero in aggregate.
+</p>
+
+<p>
+  The homeostatic recenter is what keeps it stable. Without it, the
+  hit/miss asymmetry drifts the mean <code>mu</code> toward a clip
+  boundary and the dish either saturates or falls silent: a failure
+  mode I hit repeatedly on earlier rule variants. With recentering, the
+  rule can only <em>redistribute</em> excitability across the grid, not
+  collectively raise or lower it.
+</p>
+
+<h3>What the rule buys you at baseline</h3>
+
+<p>
+  Across 8 seeds of 10&#8209;k env steps each, plasticity lifts final hit
+  rate from <strong>41.0% &rarr; 42.5%</strong> (<strong>+1.5&nbsp;pp</strong>)
+  over the intrinsic baseline, consistently across most seeds. That's small
+  (the substrate is already doing most of the work), but it's
+  positive and it survives seed&#8209;to&#8209;seed variability, which
+  earlier variants did not. It's also a stable gain: the
+  <span style="color:#d85a5a">red learning curve</span> in Fig&nbsp;3 stays
+  just above the <span style="color:#4a9bd8">blue intrinsic</span> curve
+  throughout training without the oscillations that plagued earlier rules
+  (which routinely dropped the dish 10&ndash;15 points below intrinsic before
+  recovering). Under this formulation (feedback delivered <em>onto</em>
+  the motor strip, product&#8209;form Hebbian update, asymmetric hit/miss
+  etas, and homeostatic recentering), plasticity is net&#8209;positive
+  on a <em>benign</em> substrate.
+</p>
+
+<figure class="plot">
+  <img src="figures/fig_tracking_scatter.png" alt="Scatter plot of tracking correlation vs hit rate across seeds and conditions." />
+  <figcaption>
+    <span class="lead">Fig&nbsp;4.</span>
+    Per&#8209;seed final&#8209;third ball&#8209;paddle tracking correlation
+    versus overall hit rate. Circles = unperturbed; triangles = ablation;
+    squares = barrier lesion. One cluster at corr&nbsp;&asymp;&nbsp;+0.5,
+    hit&nbsp;&asymp;&nbsp;0.42; a detached group at corr&nbsp;&asymp;&nbsp;0
+    (the broken plasticity&#8209;plus&#8209;barrier seeds).
+  </figcaption>
+</figure>
+
+<figure class="plot">
+  <img src="figures/fig_mu_fields.png" alt="Four mu fields shown side by side across conditions." />
+  <figcaption>
+    <span class="lead">Fig&nbsp;5.</span>
+    Mean final <code>mu</code> field after training, averaged over 8 seeds.
+    The cyan line marks the sensory strip, green the motor strip.
+    Learning conditions (panels 2&ndash;4) show a darker band along the
+    bottom: plasticity has lowered <code>mu</code> in the motor
+    region, making those cells more excitable. The ablation condition
+    (panel 3) is indistinguishable from the benign learning condition
+    at this averaging scale. The barrier condition (panel 4) shows the
+    barrier strip (yellow, pinned to <code>mu&nbsp;=&nbsp;0.48</code>) and a
+    visibly different motor&#8209;region pattern.
+  </figcaption>
+</figure>
+
+<h2>Perturbation: two regimes, and a plasticity failure mode</h2>
+
+<p>
+  The more interesting test is whether the dish survives damage, and
+  crucially whether <em>plasticity helps or hurts</em>. Two perturbations,
+  deliberately chosen to probe different things. (1) <strong>Ablation</strong>:
+  at step 2500, zeroing three circular regions (radius 10 cells, ~7.7% of the
+  grid each), which wipes activation and plasticity traces in those patches
+  but leaves the cells and their rule parameters intact.
+  (2) <strong>Barrier lesion</strong>: at step 3000, silencing an 8&#8209;row
+  strip across the dish's middle with two narrow gaps, which preserves total
+  area but severs the geometric symmetry between sensory and motor strips.
+</p>
+
+<figure class="gif-row two">
+  <img src="gifs/gif_ablation.gif" alt="GIF showing dish ablated mid-run, activity filling back in." />
+  <img src="gifs/gif_addcells.gif" alt="GIF showing fresh cells injected into the dish mid-run." />
+  <figcaption>
+    <span class="lead">Fig&nbsp;6.</span>
+    <em>Left:</em> ablation&#8209;style state wipe. Circular low&#8209;activity
+    patches appear in the centre of the dish; because the cells themselves
+    are not removed, ongoing sensory drive and diffusion repopulate those
+    patches over the next ~30 frames. <em>Right:</em> fresh&#8209;cell injection
+    (shown for colour; no quantitative claims made on this variant).
+  </figcaption>
+</figure>
+
+<p>
+  <strong>Ablation is benign.</strong> Pre&#8209;vs&#8209;post hit rate for
+  the intrinsic condition is 40.4% &rarr; 42.9% (the post window picks up
+  seeds that happened to hit a favourable phase); the plasticity condition
+  holds at 41.7% &rarr; 44.3%. Tracking correlation stays at
+  +0.49 / +0.51 respectively. The important caveat is that this perturbation
+  is a transient state wipe, not permanent tissue removal: surrounding drive
+  and diffusion re&#8209;seed those patches quickly, so the dish returns close
+  to baseline.
+</p>
+
+<p>
+  <strong>The barrier lesion is a different story.</strong> Intrinsic
+  behaviour barely notices it: pre&#8209;vs&#8209;post hit rate is 39.9%
+  &rarr; 42.4%, tracking holds at +0.48. Signal funnels through the two
+  gaps and re&#8209;spreads below; the kernel's geometry does what it
+  always does. <em>But plasticity collapses.</em> Pre&#8209;vs&#8209;post:
+  41.3% &rarr; 30.5% in the immediate post&#8209;lesion window, recovering
+  only to 33.5% by end&#8209;of&#8209;run. Tracking correlation drops from
+  ~+0.48 to <strong>+0.05</strong>; the paddle stops chasing the ball
+  in any coherent way.
+</p>
+
+<figure class="plot">
+  <img src="figures/fig_perturbation.png" alt="Hit rate over time, two panels: barrier lesion and ablation. Vertical line marks perturbation step." />
+  <figcaption>
+    <span class="lead">Fig&nbsp;7.</span>
+    Recovery under two perturbations, aligned on the event (black vertical
+    line). <em>Left:</em> barrier lesion. Intrinsic
+    (<span style="color:#4a9bd8">blue</span>) sails through it; plasticity
+    (<span style="color:#d85a5a">red</span>) crashes toward the
+    stationary&#8209;paddle baseline and only partially recovers. <em>Right:</em>
+    ablation. Both conditions are indistinguishable from an unperturbed run.
+  </figcaption>
+</figure>
+
+<figure class="plot">
+  <img src="figures/fig_summary.png" alt="Bar chart of hit rate and tracking correlation across all six conditions." />
+  <figcaption>
+    <span class="lead">Fig&nbsp;8.</span>
+    Overall hit rate (left) and final&#8209;third ball&#8209;paddle
+    tracking correlation (right) across all six conditions, mean &plusmn;
+    SEM over 8 seeds. Five of six conditions cluster near 41&ndash;44% hit,
+    +0.48&ndash;0.51 corr; only plasticity&#8209;plus&#8209;barrier collapses.
+  </figcaption>
+</figure>
+
+<p>
+  Why does plasticity break here and not under ablation? The Hebbian update
+  is <code>mu -= eta &sdot; A &sdot; F</code> on a hit, where <code>F</code> is the
+  feedback bump delivered onto the motor strip. This rule assumes that
+  cells firing <em>on the motor strip</em> at the moment of a hit are
+  the cells that <em>caused</em> the hit, and so deserve reinforcement.
+  Under normal geometry that's close to true: the sensory bump routed the
+  ball's x&#8209;position down through the dish; motor&#8209;strip cells at
+  the matching x fired coherently; they get their <code>mu</code> lowered;
+  the mapping strengthens. Under a barrier lesion, that corridor is
+  broken into two disconnected halves, but the sensory strip is still firing
+  at the ball's x and the motor strip still (occasionally) fires from
+  leftover activity in the lower half. The Hebbian product picks up
+  <em>spurious</em> coincidences (cells that happened to be firing in
+  the lower half when a hit was scored, but for reasons that have nothing
+  to do with the current ball position) and starts lowering their
+  thresholds. Over a few thousand steps this drifts the lower half's
+  excitability pattern away from the sensory map, and by the time it
+  stabilises, the ball&#8209;to&#8209;paddle routing is actively
+  miscalibrated. The homeostatic recenter keeps the mean <code>mu</code>
+  well&#8209;behaved, so the dish doesn't saturate or die; it just
+  plays Pong worse than the unlearned version of itself.
+</p>
+
+<p>
+  This is, I think, the interesting result of the write&#8209;up. Intrinsic
+  performance is a geometric fact about Gaussian kernels; that was expected.
+  Plasticity giving a small lift on a benign substrate was the plan. But
+  plasticity <em>being load&#8209;bearing in the wrong direction under
+  systematic perturbation</em> (helpful when it has a correct
+  sensory&#8209;motor map to reinforce, actively harmful when that map is
+  severed) is a real, mechanistically legible failure mode. Any
+  claim that "local Hebbian plasticity is stable on this substrate" is at
+  best true on a specific distribution of substrates; move off that
+  distribution and the rule writes garbage into <code>mu</code>.
+</p>
+
+<h2>What this result is, and isn't</h2>
+
+<div class="callout-grid">
+  <div class="callout">
+    <div class="k">Substrate hit rate</div>
+    <div class="v">41.0% &plusmn; 1.7%</div>
+  </div>
+  <div class="callout">
+    <div class="k">Best fixed paddle</div>
+    <div class="v">~33%</div>
+  </div>
+  <div class="callout">
+    <div class="k">Ball&#8209;paddle corr.</div>
+    <div class="v">+0.48</div>
+  </div>
+  <div class="callout">
+    <div class="k">Plasticity lift (benign)</div>
+    <div class="v">+1.5&nbsp;pp</div>
+  </div>
+  <div class="callout">
+    <div class="k">Plasticity under barrier</div>
+    <div class="v">&minus;6.1&nbsp;pp</div>
+  </div>
+  <div class="callout">
+    <div class="k">Per&#8209;cell params</div>
+    <div class="v">2 scalars</div>
+  </div>
+</div>
+
+<p>
+  <strong>What's novel here.</strong> To my knowledge, this is the first
+  demonstration of a <em>continuous cellular automaton with purely scalar
+  per&#8209;cell state and rule parameters</em> (no learned
+  neural&#8209;network update, no trained readout) running
+  Kagan&nbsp;et&nbsp;al.'s closed&#8209;loop DishBrain Pong protocol at
+  above&#8209;chance performance. The closest adjacent works each miss at
+  least one of those pillars:
+</p>
+<ul class="refs">
+  <li><a href="https://distill.pub/2020/growing-ca/">Neural Cellular Automata
+    (Mordvintsev et&nbsp;al., Distill 2020)</a> and
+    <a href="https://arxiv.org/abs/2307.09320">Biomaker CA (Randazzo &amp;
+    Mordvintsev, 2023)</a> embed a <em>trained neural network</em> in each
+    cell; the per&#8209;cell update is a learned MLP, not a scalar
+    rule.
+  </li>
+  <li><a href="https://www.science.org/doi/10.1126/sciadv.adp0834">Sensorimotor
+    Lenia (Hamon, Etcheverry et&nbsp;al., Science Advances 2024)</a> keeps the
+    pure&#8209;Lenia substrate, but learning happens <em>offline</em> via
+    IMGEP diversity search and gradient descent on ~130 CA parameters, and
+    the task is obstacle navigation, no closed&#8209;loop Pong, no
+    online plasticity.
+  </li>
+  <li>CA reservoir computing (<a href="https://arxiv.org/abs/1410.0162">Yilmaz
+    2014</a> and follow&#8209;ups) uses a CA as a fixed reservoir with a
+    <em>trained linear readout</em> on top, so the "learning" lives
+    outside the CA.
+  </li>
+  <li><a href="https://developmentalsystems.org/rl-for-ca/">RL for Flow&#8209;Lenia</a>
+    steers CA organisms via an <em>external</em> RL agent, not a Pong loop
+    and not local plasticity.
+  </li>
+  <li><a href="https://www.sciencedirect.com/science/article/pii/S2666386424004363">Strong,
+    Holderbaum &amp; Hayashi (Device, 2024)</a> is the closest
+    non&#8209;neural DishBrain replication in spirit: an electro&#8209;active
+    polymer hydrogel plays DishBrain&#8209;Pong via ion migration as
+    implicit plasticity. But that's a <em>physical</em> substrate, not an
+    algorithmic cellular automaton.
+  </li>
+</ul>
+<p>
+  Here the CA <em>is</em> the entire computation: two scalar parameters per
+  cell, one shared Gaussian kernel, one local Hebbian rule keyed to the
+  feedback channel. Nothing about that fits the prior art's boxes.
+</p>
+
+<p>
+  <strong>What's <em>not</em> claimed.</strong> The lift from plasticity is
+  a few percentage points on a benign substrate, not transformative, and
+  the rule is net&#8209;negative under barrier lesion. The substrate's
+  Gaussian&#8209;kernel symmetry sits near the symmetric optimum for a
+  left/right&#8209;symmetric task, and most per&#8209;cell <code>mu</code>
+  perturbations pull off that optimum, so there is very little
+  headroom for the Hebbian rule to exploit, and when the task becomes
+  asymmetric (e.g.&nbsp;via a barrier) the same rule misattributes credit
+  because its "causal model" (cells that fired near a hit caused that hit)
+  is broken by the geometry. Making plasticity <em>robustly</em> useful
+  looks like it needs either (a) a non&#8209;geometric sensor map so the
+  substrate has to <em>learn</em> the routing rather than inherit it from
+  the kernel, (b) exploration noise in the motor output so
+  REINFORCE&#8209;style credit assignment has a signal to work with, or
+  (c) richer per&#8209;cell parameters (e.g.&nbsp;per&#8209;cell kernels,
+  or Flow&#8209;Lenia-style locally varying coupling). All three are
+  one&#8209;function changes in the code; none fit in this write&#8209;up's
+  time budget.
+</p>
+
+<h3>Limitations and failure modes I walked into</h3>
+
+<ul>
+  <li>Four earlier plasticity rules I tried (co&#8209;activation eligibility,
+    motor&#8209;correlation eligibility, REINFORCE&#8209;flavoured credit,
+    credit&#8209;trace with normalization) all <em>degraded</em> Pong
+    performance by 10&ndash;25 points before converging on the Hebbian /
+    feedback product form. Most of them drove <code>mu.mean()</code> to a
+    clip boundary; the homeostatic recenter is what fixed that.
+  </li>
+  <li>The substrate is delicate in its own way: Lenia ring kernels, bistable
+    sigmoid growth, and Mexican&#8209;hat kernels each produced pathologies
+    (local&#8209;stim death, runaway saturation, inverted sensor map) that
+    took several iterations to work around. The monostable leaky integrator
+    with a solid Gaussian kernel is the first variant I got to run the
+    full pipeline.
+  </li>
+  <li>The task is symmetric enough that the substrate doesn't leave room
+    for much learning on a benign dish: intrinsic performance is
+    near a geometric optimum. The barrier&#8209;lesion failure mode shows
+    the converse: the same rule that gently helps on a benign dish hurts
+    under a perturbation that breaks its implicit causal assumption. If
+    I had more time I'd follow the plasticity failure mode rather than the
+    intrinsic&#8209;performance one; it's more mechanistically
+    interesting and the fix probably needs a different credit rule, not a
+    better tuning of this one.
+  </li>
+</ul>
+
+<h2>Code</h2>
+
+<p>
+  The whole thing is ~600 lines of NumPy:
+</p>
+
+<pre><code>dishbrain_ca/
+  substrate.py    # Gaussian kernel, tanh-ReLU growth, per-cell fields
+  pong.py         # ball + paddle + sensory/motor/feedback stim
+  plasticity.py   # a_baseline trace + Hebbian feedback rule
+  trainer.py      # closed-loop step, perturbations
+run.py            # CLI entry
+viz_gif.py        # animated GIF renderer
+experiments/
+  run_ab.py       # multi-seed A/B runner
+  make_figures.py # all figures in this post</code></pre>
+
+<p>
+  Reproduction:
+</p>
+
+<pre><code>python3 experiments/run_ab.py --seeds 8 --steps 10000
+python3 experiments/make_figures.py --out site/figures
+python3 viz_gif.py --steps 500 --fps 24 --no-learn --pre-steps 600 \
+                    --seed 2 --out site/gifs/gif_intrinsic.gif</code></pre>
+
+</main>
+</body>
+</html>
