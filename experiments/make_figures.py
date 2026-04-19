@@ -2,7 +2,7 @@
 
 Run after experiments/run_ab.py has populated experiments/data/*/seed_*.npz.
 
-    python experiments/make_figures.py --out site/figures
+    python experiments/make_figures.py --out docs/figures
 """
 from __future__ import annotations
 
@@ -279,7 +279,7 @@ def fig_architecture_diagram(out_path: str, H: int = 64, W: int = 64) -> None:
 def main() -> None:
     p = argparse.ArgumentParser()
     p.add_argument("--data", default="experiments/data")
-    p.add_argument("--out", default="site/figures")
+    p.add_argument("--out", default="docs/figures")
     args = p.parse_args()
 
     os.makedirs(args.out, exist_ok=True)
